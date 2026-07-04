@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Building2, MapPin, ShieldCheck } from 'lucide-react';
+import * as PortOne from '@portone/browser-sdk/v2';
+import { ArrowLeft, Building2, CreditCard, MapPin, ShieldCheck, Wallet } from 'lucide-react';
 import { getCart, clearCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { createClient } from '@/lib/supabase';
@@ -44,8 +45,15 @@ export default function CheckoutPage() {
   const [manual, setManual] = useState({ name: '', phone: '', postal_code: '', address: '', detail_address: '' });
   const [business, setBusiness] = useState<BusinessInfo>(EMPTY_BUSINESS);
   const [agree, setAgree] = useState({ terms: false, privacy: false, coupang: false });
+  const [payMethod, setPayMethod] = useState<'CARD' | 'EASY_PAY'>('CARD');
   const [submitting, setSubmitting] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // 결제 실패 후 재시도 시 중복 주문 생성을 막기 위해 생성된 주문을 기억
+  const [pendingOrder, setPendingOrder] = useState<{
+    order_number: string;
+    amount: number;
+    orderName: string;
+  } | null>(null);
 
   useEffect(() => {
     setItems(getCart());
@@ -125,45 +133,104 @@ export default function CheckoutPage() {
       return;
     }
 
+    const storeId = process.env.NEXT_PUBLIC_PORTONE_STORE_ID;
+    const channelKey =
+      payMethod === 'CARD'
+        ? process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_CARD
+        : process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_EASYPAY;
+    if (!storeId || !channelKey) {
+      toast.error('결제 설정이 완료되지 않았습니다. 관리자에게 문의해주세요.');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const res = await fetch('/api/sourcing/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            product_id: i.product_id,
-            title: i.title,
-            image: i.image,
-            sku_name: i.sku_name,
-            quantity: i.quantity,
-            price_cny: i.price_cny,
-            price_krw: i.price_krw,
-          })),
-          total_cny: subtotalCny,
-          total_krw: subtotal,
-          shipping_address: shippingAddress,
-          business_info: business,
-          terms_agreed: agree,
-        }),
+      // 1) 주문 생성 (결제 실패 후 재시도면 기존 pending 주문 재사용)
+      let order = pendingOrder;
+      if (!order) {
+        const res = await fetch('/api/sourcing/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: items.map((i) => ({
+              product_id: i.product_id,
+              title: i.title,
+              image: i.image,
+              sku_name: i.sku_name,
+              quantity: i.quantity,
+              price_cny: i.price_cny,
+              price_krw: i.price_krw,
+            })),
+            total_cny: subtotalCny,
+            total_krw: subtotal,
+            shipping_address: shippingAddress,
+            business_info: business,
+            terms_agreed: agree,
+          }),
+        });
+
+        if (res.status === 401) {
+          router.replace('/login?redirect=/checkout');
+          return;
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: '주문 생성에 실패했습니다.' }));
+          toast.error(err.error || '주문 생성에 실패했습니다.');
+          return;
+        }
+
+        const created = await res.json();
+        const orderName =
+          items.length > 1 ? `${items[0].title} 외 ${items.length - 1}건` : items[0].title;
+        order = {
+          order_number: created.order_number as string,
+          // 결제 금액은 서버가 확정한 값 기준 (배송비 서버 재계산 반영)
+          amount:
+            (created.total_krw ?? 0) + (created.shipping_fee ?? 0) + (created.service_fee ?? 0),
+          orderName: orderName.slice(0, 100),
+        };
+        setPendingOrder(order);
+      }
+
+      // 2) 포트원 결제창 호출 (모바일은 redirectUrl로 이동 후 success 페이지에서 승인 확인)
+      const payment = await PortOne.requestPayment({
+        storeId,
+        channelKey,
+        paymentId: order.order_number,
+        orderName: order.orderName,
+        totalAmount: order.amount,
+        currency: 'CURRENCY_KRW',
+        payMethod,
+        customer: {
+          fullName: shippingAddress.name,
+          phoneNumber: shippingAddress.phone,
+        },
+        redirectUrl: `${window.location.origin}/checkout/success`,
       });
 
-      if (res.status === 401) {
-        router.replace('/login?redirect=/checkout');
-        return;
-      }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: '주문 생성에 실패했습니다.' }));
-        toast.error(err.error || '주문 생성에 실패했습니다.');
+      if (!payment || payment.code !== undefined) {
+        // 사용자가 창을 닫았거나 결제 실패 — 주문은 pending으로 유지, 재시도 가능
+        toast.error(payment?.message || '결제가 취소되었습니다.');
         return;
       }
 
-      const order = await res.json();
+      // 3) 서버 승인 확인 (금액·상태 검증)
+      const confirmRes = await fetch('/api/checkout/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId: payment.paymentId }),
+      });
+      const confirmData = await confirmRes.json().catch(() => ({}));
+      if (!confirmRes.ok) {
+        toast.error(confirmData.error || '결제 확인에 실패했습니다. 고객센터로 문의해주세요.');
+        router.push(`/checkout/fail?message=${encodeURIComponent(confirmData.error || '결제 확인 실패')}`);
+        return;
+      }
+
       clearCart();
-      toast.success('주문이 접수되었습니다.');
-      router.push(`/sourcing-orders?ordered=${order.order_number}`);
+      router.push(`/checkout/success?orderId=${order.order_number}&confirmed=1`);
     } catch {
-      toast.error('네트워크 오류가 발생했습니다.');
+      toast.error('결제 처리 중 오류가 발생했습니다.');
     } finally {
       setSubmitting(false);
     }
@@ -314,11 +381,41 @@ export default function CheckoutPage() {
                 <span className="text-primary">{formatPrice(total)}</span>
               </div>
             </div>
+
+            {/* 결제수단 선택 */}
+            <div className="mb-4">
+              <p className="text-sm font-semibold mb-2">결제수단</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPayMethod('CARD')}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 border rounded-[var(--radius-sm)] text-sm font-medium transition-colors ${
+                    payMethod === 'CARD'
+                      ? 'border-ink bg-surface text-ink'
+                      : 'border-hairline text-muted hover:border-ink'
+                  }`}
+                >
+                  <CreditCard className="w-4 h-4" /> 카드결제
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayMethod('EASY_PAY')}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 border rounded-[var(--radius-sm)] text-sm font-medium transition-colors ${
+                    payMethod === 'EASY_PAY'
+                      ? 'border-ink bg-surface text-ink'
+                      : 'border-hairline text-muted hover:border-ink'
+                  }`}
+                >
+                  <Wallet className="w-4 h-4" /> 간편결제
+                </button>
+              </div>
+            </div>
+
             <Button className="w-full" onClick={handleSubmit} isLoading={submitting}>
-              주문 접수하기
+              {formatPrice(total)} 결제하기
             </Button>
             <p className="text-[11px] text-muted mt-3 leading-relaxed">
-              주문 접수 후 견적·결제 안내가 진행됩니다. 해외 국제운송·통관비는 별도 안내됩니다.
+              결제 완료 후 소싱이 진행됩니다. 해외 국제운송·통관비는 별도 안내됩니다.
             </p>
           </div>
         </div>

@@ -16,7 +16,7 @@ function FailContent() {
       <p className="text-text-secondary mb-8">{message}</p>
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
         <Link
-          href="/shop"
+          href="/checkout"
           className="px-6 py-3 bg-primary text-white rounded-[var(--radius-md)] font-medium hover:bg-primary-60 transition-colors"
         >
           다시 시도하기
