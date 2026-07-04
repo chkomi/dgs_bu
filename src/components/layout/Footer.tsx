@@ -51,7 +51,7 @@ export default function Footer() {
             <p className="text-[11px] text-text-tertiary leading-relaxed">
               상호명 주식회사네이처발란스&nbsp;&nbsp;
               대표자 신진아&nbsp;&nbsp;
-              사업장 주소 58217 전라남도 나주시 상야4길 16-10 (빛가람동) 310호 네이처발란스<br />
+              사업장 주소 58326 전라남도 나주시 교육길 13, 제이에이동 2층 210호 (빛가람동, 스마트파크 지식산업센터)<br />
               사업자 등록번호 792-81-03202&nbsp;&nbsp;
               통신판매업 신고번호 2024-전남나주-0193&nbsp;&nbsp;
               개인정보보호책임자 신진아
