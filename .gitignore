@@ -51,6 +51,9 @@ next-env.d.ts
 # Plans (Claude Code)
 .plans/
 
+# Business/legal documents (sensitive — contracts, registrations, bank docs)
+docs/
+
 # IDE
 .idea/
 .vscode/
