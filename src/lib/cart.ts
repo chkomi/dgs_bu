@@ -57,6 +57,7 @@ export function clearCart(): void {
   localStorage.removeItem(CART_KEY);
 }
 
+// 장바구니 항목(상품 종류) 개수 — 수량 합계가 아님
 export function getCartCount(): number {
-  return getCart().reduce((sum, item) => sum + item.quantity, 0);
+  return getCart().length;
 }
