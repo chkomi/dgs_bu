@@ -13,8 +13,26 @@ function LoginContent() {
   const [hashError, setHashError] = useState<string | null>(null);
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [agreePrivacy, setAgreePrivacy] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const canLogin = agreeTerms && agreePrivacy;
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canLogin || emailLoading) return;
+    setEmailLoading(true);
+    setEmailError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setEmailError('이메일 또는 비밀번호가 올바르지 않습니다.');
+      setEmailLoading(false);
+      return;
+    }
+    window.location.href = redirect;
+  };
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -79,6 +97,39 @@ function LoginContent() {
             카카오로 계속하기
           </button>
         </div>
+
+        {/* 이메일/비밀번호 로그인 */}
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 border-t border-border" />
+          <span className="text-xs text-text-tertiary">또는 이메일로 로그인</span>
+          <div className="flex-1 border-t border-border" />
+        </div>
+        <form onSubmit={handleEmailLogin} className="space-y-2.5">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="이메일"
+            autoComplete="email"
+            className="w-full px-4 py-3 border border-border rounded-[var(--radius-md)] text-sm focus:outline-none focus:border-primary"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="비밀번호"
+            autoComplete="current-password"
+            className="w-full px-4 py-3 border border-border rounded-[var(--radius-md)] text-sm focus:outline-none focus:border-primary"
+          />
+          {emailError && <p className="text-xs text-danger">{emailError}</p>}
+          <button
+            type="submit"
+            disabled={!canLogin || emailLoading || !email || !password}
+            className="w-full px-4 py-3 bg-primary text-white rounded-[var(--radius-md)] text-sm font-bold hover:bg-primary-60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {emailLoading ? '로그인 중...' : '이메일로 로그인'}
+          </button>
+        </form>
 
         <div className="mt-6 space-y-2.5">
           <label className="flex items-start gap-2.5 cursor-pointer">
