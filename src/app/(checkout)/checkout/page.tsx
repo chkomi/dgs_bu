@@ -130,6 +130,16 @@ export default function CheckoutPage() {
     }
   };
 
+  const handleBizAddressSearch = async () => {
+    try {
+      await openPostcodeSearch(({ address }) => {
+        setBiz('address', address);
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '주소 검색을 열 수 없습니다.');
+    }
+  };
+
   const handleSubmit = async () => {
     if (items.length === 0) {
       toast.error('주문할 상품이 없습니다.');
@@ -252,8 +262,11 @@ export default function CheckoutPage() {
 
       clearCart();
       router.push(`/checkout/success?orderId=${order.order_number}&confirmed=1`);
-    } catch {
-      toast.error('결제 처리 중 오류가 발생했습니다.');
+    } catch (e) {
+      // 실제 원인(포트원 SDK 등)을 화면·콘솔에 노출해 진단 가능하게
+      console.error('[checkout] payment error:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`결제 처리 중 오류: ${msg}`);
     } finally {
       setSubmitting(false);
     }
@@ -374,7 +387,22 @@ export default function CheckoutPage() {
               <div className="hidden sm:block" />
               <input className={inputCls} placeholder="업태 (예: 도소매)" value={business.business_type} onChange={(e) => setBiz('business_type', e.target.value)} />
               <input className={inputCls} placeholder="종목 (예: 전자상거래)" value={business.business_item} onChange={(e) => setBiz('business_item', e.target.value)} />
-              <input className={`${inputCls} sm:col-span-2`} placeholder="사업장 주소" value={business.address} onChange={(e) => setBiz('address', e.target.value)} />
+              <div className="sm:col-span-2 flex gap-2">
+                <input
+                  className={inputCls}
+                  placeholder="사업장 주소 (주소 찾기 후 상세주소를 이어서 입력)"
+                  value={business.address}
+                  onChange={(e) => setBiz('address', e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={handleBizAddressSearch}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-[var(--radius-sm)] border border-ink text-sm font-medium text-ink hover:bg-surface-soft transition-colors whitespace-nowrap"
+                >
+                  <Search className="w-4 h-4" />
+                  주소 찾기
+                </button>
+              </div>
             </div>
           </section>
 
