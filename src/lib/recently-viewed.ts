@@ -1,4 +1,6 @@
-const KEY = 'ddalkkak-recently-viewed';
+import { getScopedJSON, setScopedJSON, removeScoped } from './client-scope';
+
+const KEY = 'ddalkkak-recently-viewed'; // 계정별 스코핑은 client-scope가 담당
 const MAX = 12;
 
 export interface RecentlyViewedItem {
@@ -10,23 +12,17 @@ export interface RecentlyViewedItem {
 }
 
 export function getRecentlyViewed(): RecentlyViewedItem[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || '[]');
-  } catch {
-    return [];
-  }
+  return getScopedJSON<RecentlyViewedItem[]>(KEY, []);
 }
 
 export function addRecentlyViewed(item: Omit<RecentlyViewedItem, 'visited_at'>): void {
   const list = getRecentlyViewed().filter((i) => i.product_id !== item.product_id);
   list.unshift({ ...item, visited_at: new Date().toISOString() });
   if (list.length > MAX) list.length = MAX;
-  localStorage.setItem(KEY, JSON.stringify(list));
+  setScopedJSON(KEY, list);
   window.dispatchEvent(new Event('recent-updated'));
 }
 
 export function clearRecentlyViewed(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(KEY);
+  removeScoped(KEY);
 }

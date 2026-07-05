@@ -8,8 +8,7 @@ import { cn } from '@/lib/utils';
 import { formatPrice } from '@/lib/utils';
 import { getRecentlyViewed, clearRecentlyViewed } from '@/lib/recently-viewed';
 import type { RecentlyViewedItem } from '@/lib/recently-viewed';
-
-const RECENT_SEARCHES_KEY = 'ddalkkak-recent-searches';
+import { getRecentSearches, removeRecentSearch, clearRecentSearches } from '@/lib/recent-searches';
 
 function proxyImg(url: string): string {
   if (!url) return '';
@@ -28,9 +27,7 @@ export default function HistoryDropdown() {
 
   useEffect(() => {
     const load = () => {
-      try {
-        setRecentSearches(JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]'));
-      } catch {}
+      setRecentSearches(getRecentSearches());
       setRecentlyViewed(getRecentlyViewed());
     };
     load();
@@ -55,14 +52,12 @@ export default function HistoryDropdown() {
   }, [isOpen]);
 
   const removeRecent = (term: string) => {
-    const next = recentSearches.filter((k) => k !== term);
-    setRecentSearches(next);
-    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+    setRecentSearches(removeRecentSearch(term));
   };
 
   const clearAllRecent = () => {
     setRecentSearches([]);
-    localStorage.removeItem(RECENT_SEARCHES_KEY);
+    clearRecentSearches();
   };
 
   const handleSearchClick = (term: string) => {

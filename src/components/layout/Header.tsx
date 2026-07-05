@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { Menu, User, LogOut, ShoppingCart } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { getCartCount, setCartUser } from '@/lib/cart';
+import { getCartCount } from '@/lib/cart';
+import { setClientUser } from '@/lib/client-scope';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import MobileMenu from './MobileMenu';
 
@@ -19,12 +20,12 @@ export default function Header() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
-      setCartUser(data.user?.id ?? null); // 계정별 장바구니 활성화
+      setClientUser(data.user?.id ?? null); // 계정별 로컬 상태(장바구니·최근본상품·검색어) 활성화
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      setCartUser(session?.user?.id ?? null);
+      setClientUser(session?.user?.id ?? null);
     });
 
     return () => subscription.unsubscribe();

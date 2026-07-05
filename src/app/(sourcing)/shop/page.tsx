@@ -17,11 +17,10 @@ import {
   SORT_OPTIONS,
 } from '@/lib/sourcing/filters';
 import { cn } from '@/lib/utils';
+import { saveRecentSearch } from '@/lib/recent-searches';
 import type { SourcingProduct, SourcingCategory, PaginatedResponse } from '@/types';
 
 const WISHLIST_KEY = 'ddalkkak-wishlist';
-const RECENT_SEARCHES_KEY = 'ddalkkak-recent-searches';
-const MAX_RECENT = 8;
 const POPULAR_KEYWORDS = [
   '블루투스 이어폰', '후드티', '텀블러', '무선 마우스', '레깅스',
   '에어팟 케이스', '캠핑 용품', '주방 용품', '반려동물 용품', '운동화',
@@ -35,15 +34,6 @@ function extract1688Id(input: string): string | null {
   const match = trimmed.match(/\/offer\/(\d+)|detail\.1688\.com[^/]*\/(\d{10,})|[?&]offerId=(\d+)/);
   if (match) return match[1] || match[2] || match[3];
   return null;
-}
-
-function saveRecentSearch(keyword: string) {
-  if (!keyword.trim()) return;
-  try {
-    const prev: string[] = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
-    const next = [keyword, ...prev.filter((k) => k !== keyword)].slice(0, MAX_RECENT);
-    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
-  } catch {}
 }
 
 export default function ShopPage() {

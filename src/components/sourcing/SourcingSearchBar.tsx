@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { saveRecentSearch } from '@/lib/recent-searches';
 
-const RECENT_SEARCHES_KEY = 'ddalkkak-recent-searches';
-const MAX_RECENT = 8;
+export { saveRecentSearch };
 
 /** 1688 URL 또는 순수 상품 ID에서 product_id 추출 */
 export function extract1688Id(input: string): string | null {
@@ -15,16 +15,6 @@ export function extract1688Id(input: string): string | null {
   const match = trimmed.match(/\/offer\/(\d+)|detail\.1688\.com[^/]*\/(\d{10,})|[?&]offerId=(\d+)/);
   if (match) return match[1] || match[2] || match[3];
   return null;
-}
-
-export function saveRecentSearch(keyword: string) {
-  if (!keyword.trim()) return;
-  try {
-    const prev: string[] = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
-    const next = [keyword, ...prev.filter((k) => k !== keyword)].slice(0, MAX_RECENT);
-    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
-    window.dispatchEvent(new Event('recent-updated'));
-  } catch {}
 }
 
 interface Props {

@@ -7,9 +7,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Clock, History, X } from 'lucide-react';
 import { adminNavItems, isActivePath, navItems, type NavItem } from '@/lib/navigation';
 import { getRecentlyViewed, clearRecentlyViewed, type RecentlyViewedItem } from '@/lib/recently-viewed';
+import { getRecentSearches, removeRecentSearch, clearRecentSearches } from '@/lib/recent-searches';
 import { cn, formatPrice } from '@/lib/utils';
-
-const RECENT_SEARCHES_KEY = 'ddalkkak-recent-searches';
 
 function proxyImg(url: string): string {
   if (!url) return '';
@@ -60,12 +59,7 @@ export default function MobileBottomNav() {
     if (isAdmin) return;
 
     const loadHistory = () => {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
-        setRecentSearches(Array.isArray(parsed) ? parsed : []);
-      } catch {
-        setRecentSearches([]);
-      }
+      setRecentSearches(getRecentSearches());
       setRecentlyViewed(getRecentlyViewed());
     };
 
@@ -79,14 +73,12 @@ export default function MobileBottomNav() {
   }, [isAdmin]);
 
   const removeRecent = (term: string) => {
-    const next = recentSearches.filter((k) => k !== term);
-    setRecentSearches(next);
-    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+    setRecentSearches(removeRecentSearch(term));
   };
 
   const clearAllRecent = () => {
     setRecentSearches([]);
-    localStorage.removeItem(RECENT_SEARCHES_KEY);
+    clearRecentSearches();
   };
 
   const handleSearchClick = (term: string) => {
