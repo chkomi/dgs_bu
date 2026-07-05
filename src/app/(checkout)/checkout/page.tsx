@@ -49,6 +49,7 @@ export default function CheckoutPage() {
   const [payMethod, setPayMethod] = useState<'CARD' | 'EASY_PAY'>('CARD');
   const [submitting, setSubmitting] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
   // 결제 실패 후 재시도 시 중복 주문 생성을 막기 위해 생성된 주문을 기억
   const [pendingOrder, setPendingOrder] = useState<{
     order_number: string;
@@ -64,6 +65,7 @@ export default function CheckoutPage() {
         router.replace('/login?redirect=/checkout');
         return;
       }
+      setUserEmail(data.user.email || '');
       // 지난 주문에서 저장된 사업자 정보 자동 입력
       supabase
         .from('profiles')
@@ -237,6 +239,7 @@ export default function CheckoutPage() {
         customer: {
           fullName: shippingAddress.name,
           phoneNumber: shippingAddress.phone,
+          email: userEmail, // 이니시스 V2 일반결제 필수
         },
         redirectUrl: `${window.location.origin}/checkout/success`,
       });
