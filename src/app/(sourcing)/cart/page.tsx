@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Minus, Plus, Trash2, ShoppingCart, ArrowLeft } from 'lucide-react';
-import Image from 'next/image';
 import { getCart, updateCartQty, removeFromCart, clearCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { DOMESTIC_SHIPPING_FEE } from '@/lib/shipping';
@@ -94,11 +93,16 @@ export default function CartPage() {
               <div key={key} className="bg-canvas border border-hairline rounded-[var(--radius-md)] p-4 flex gap-4">
                 <div className="w-16 h-16 bg-surface-soft rounded-[var(--radius-sm)] flex-shrink-0 overflow-hidden">
                   {item.image ? (
-                    <Image
+                    // next/image 최적화는 쿼리스트링 있는 로컬 경로(이미지 프록시)를 400으로 거부하므로
+                    // ProductCard와 동일하게 일반 img + 프록시 사용
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
                       src={`/api/image-proxy?url=${encodeURIComponent(item.image)}`}
                       alt={item.title}
                       width={64}
                       height={64}
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
                       className="w-full h-full object-cover"
                     />
                   ) : (
