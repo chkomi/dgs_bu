@@ -55,6 +55,8 @@ export function removeFromCart(productId: string, skuId: string | undefined): vo
 
 export function clearCart(): void {
   localStorage.removeItem(CART_KEY);
+  // 헤더 뱃지 등 구독자 동기화 (saveCart와 동일한 알림)
+  window.dispatchEvent(new Event('cart-updated'));
 }
 
 // 장바구니 항목(상품 종류) 개수 — 수량 합계가 아님
