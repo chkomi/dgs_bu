@@ -143,5 +143,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // 다음 주문 자동 입력을 위한 저장 (실패해도 주문에는 영향 없음)
+  try {
+    // 1) 사업자 정보 → 프로필에 저장 (체크아웃 프리필용)
+    await supabase
+      .from('profiles')
+      .update({ business_info: normalizedBusinessInfo })
+      .eq('id', user.id);
+
+    // 2) 직접 입력한 배송지면 저장 목록에 자동 추가 (중복 제외)
+    const { data: existing } = await supabase
+      .from('shipping_addresses')
+      .select('id, recipient, phone, address, address_detail')
+      .eq('user_id', user.id);
+
+    const norm = (s?: string | null) => (s || '').replace(/\s+/g, ' ').trim();
+    const isDuplicate = (existing ?? []).some(
+      (a) =>
+        norm(a.recipient) === norm(shipping_address.name) &&
+        norm(a.phone) === norm(shipping_address.phone) &&
+        norm(a.address) === norm(shipping_address.address) &&
+        norm(a.address_detail) === norm(shipping_address.detail_address)
+    );
+
+    if (!isDuplicate) {
+      await supabase.from('shipping_addresses').insert({
+        user_id: user.id,
+        label: '최근 배송지',
+        recipient: shipping_address.name,
+        phone: shipping_address.phone,
+        address: shipping_address.address,
+        address_detail: shipping_address.detail_address || null,
+        postal_code: shipping_address.postal_code || null,
+        is_default: (existing ?? []).length === 0, // 첫 배송지는 기본으로
+      });
+    }
+  } catch {
+    // 프리필 저장 실패는 무시
+  }
+
   return NextResponse.json(data, { status: 201 });
 }

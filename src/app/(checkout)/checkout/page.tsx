@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import * as PortOne from '@portone/browser-sdk/v2';
-import { ArrowLeft, Building2, CreditCard, MapPin, ShieldCheck, Wallet } from 'lucide-react';
+import { ArrowLeft, Building2, CreditCard, MapPin, Search, ShieldCheck, Wallet } from 'lucide-react';
 import { getCart, clearCart } from '@/lib/cart';
 import { formatPrice } from '@/lib/utils';
 import { createClient } from '@/lib/supabase';
@@ -14,6 +14,7 @@ import {
   getDomesticShippingFee,
   getRemoteAreaSurcharge,
 } from '@/lib/shipping';
+import { openPostcodeSearch } from '@/lib/daum-postcode';
 import Button from '@/components/ui/Button';
 import type { SourcingCartItem, BusinessInfo } from '@/types';
 
@@ -63,6 +64,18 @@ export default function CheckoutPage() {
         router.replace('/login?redirect=/checkout');
         return;
       }
+      // 지난 주문에서 저장된 사업자 정보 자동 입력
+      supabase
+        .from('profiles')
+        .select('business_info')
+        .eq('id', data.user.id)
+        .single()
+        .then(({ data: profile }) => {
+          const saved = profile?.business_info as Partial<BusinessInfo> | null;
+          if (saved && saved.company_name) {
+            setBusiness({ ...EMPTY_BUSINESS, ...saved });
+          }
+        });
       fetch('/api/addresses')
         .then((r) => (r.ok ? r.json() : []))
         .then((list: SavedAddress[]) => {
@@ -106,6 +119,16 @@ export default function CheckoutPage() {
 
   const setBiz = (key: keyof BusinessInfo, value: string) =>
     setBusiness((prev) => ({ ...prev, [key]: value }));
+
+  const handleAddressSearch = async () => {
+    try {
+      await openPostcodeSearch(({ zonecode, address }) => {
+        setManual((m) => ({ ...m, postal_code: zonecode, address }));
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '주소 검색을 열 수 없습니다.');
+    }
+  };
 
   const handleSubmit = async () => {
     if (items.length === 0) {
@@ -304,10 +327,36 @@ export default function CheckoutPage() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <input className={inputCls} placeholder="받는 분" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} />
                 <input className={inputCls} placeholder="연락처 (010-0000-0000)" value={manual.phone} onChange={(e) => setManual({ ...manual, phone: e.target.value })} />
-                <input className={inputCls} placeholder="우편번호" value={manual.postal_code} onChange={(e) => setManual({ ...manual, postal_code: e.target.value })} />
-                <div className="hidden sm:block" />
-                <input className={`${inputCls} sm:col-span-2`} placeholder="주소" value={manual.address} onChange={(e) => setManual({ ...manual, address: e.target.value })} />
-                <input className={`${inputCls} sm:col-span-2`} placeholder="상세 주소" value={manual.detail_address} onChange={(e) => setManual({ ...manual, detail_address: e.target.value })} />
+                <div className="sm:col-span-2 flex gap-2">
+                  <input
+                    className={`${inputCls} max-w-[150px] bg-surface-soft cursor-pointer`}
+                    placeholder="우편번호"
+                    value={manual.postal_code}
+                    readOnly
+                    onClick={handleAddressSearch}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddressSearch}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-[var(--radius-sm)] border border-ink text-sm font-medium text-ink hover:bg-surface-soft transition-colors whitespace-nowrap"
+                  >
+                    <Search className="w-4 h-4" />
+                    주소 찾기
+                  </button>
+                </div>
+                <input
+                  className={`${inputCls} sm:col-span-2 bg-surface-soft cursor-pointer`}
+                  placeholder="주소 (주소 찾기로 입력)"
+                  value={manual.address}
+                  readOnly
+                  onClick={handleAddressSearch}
+                />
+                <input
+                  className={`${inputCls} sm:col-span-2`}
+                  placeholder="상세 주소 입력 (동/호수 등)"
+                  value={manual.detail_address}
+                  onChange={(e) => setManual({ ...manual, detail_address: e.target.value })}
+                />
               </div>
             )}
           </section>
