@@ -28,6 +28,7 @@ export default function SupportChatWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabaseRef = useRef(createClient());
 
@@ -39,7 +40,12 @@ export default function SupportChatWidget() {
       setAuthChecked(true);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
+      if (!nextUser) {
+        setConversationId(null);
+        setMessages([]);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -58,48 +64,44 @@ export default function SupportChatWidget() {
     });
   }, []);
 
+  const loadChat = useCallback(
+    async (scroll = false) => {
+      if (!user) return null;
+
+      try {
+        const res = await fetch('/api/chat', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '채팅을 불러오지 못했습니다');
+
+        const nextMessages = (data.messages as ChatMessage[]) ?? [];
+        setConversationId(data.conversation_id ?? null);
+        setMessages((prev) => {
+          const prevLast = prev.at(-1)?.id;
+          const nextLast = nextMessages.at(-1)?.id;
+          if (prev.length === nextMessages.length && prevLast === nextLast) return prev;
+          if (scroll || prev.length !== nextMessages.length) scrollToBottom();
+          return nextMessages;
+        });
+        setErrorMessage('');
+        return (data.conversation_id as string | null) ?? null;
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : '채팅을 불러오지 못했습니다');
+        return null;
+      }
+    },
+    [user, scrollToBottom]
+  );
+
   // 대화방 확보 + 메시지 로드 + 실시간 구독 (열렸고 로그인된 경우)
   useEffect(() => {
     if (!open || !user) return;
     const supabase = supabaseRef.current;
-    let active = true;
+    let disposed = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
     (async () => {
-      // open 대화방 확보
-      let convId: string | null = null;
-      const { data: existing } = await supabase
-        .from('cs_chat_conversations')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'open')
-        .limit(1)
-        .maybeSingle();
-      if (existing) {
-        convId = existing.id;
-      } else {
-        const { data: created } = await supabase
-          .from('cs_chat_conversations')
-          .insert({ user_id: user.id })
-          .select('id')
-          .single();
-        convId = created?.id ?? null;
-      }
-      if (!active || !convId) return;
-      setConversationId(convId);
-
-      // 기존 메시지 로드
-      const { data: msgs } = await supabase
-        .from('cs_chat_messages')
-        .select('id, conversation_id, sender, body, created_at')
-        .eq('conversation_id', convId)
-        .order('created_at', { ascending: true });
-      if (!active) return;
-      setMessages((msgs as ChatMessage[]) ?? []);
-      scrollToBottom();
-
-      // 미읽음 초기화(고객)
-      await supabase.from('cs_chat_conversations').update({ unread_user: 0 }).eq('id', convId);
+      const convId = await loadChat(true);
+      if (disposed || !convId) return;
 
       // 실시간 구독
       channel = supabase
@@ -117,45 +119,45 @@ export default function SupportChatWidget() {
     })();
 
     return () => {
-      active = false;
+      disposed = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [open, user, scrollToBottom]);
+  }, [open, user, loadChat, scrollToBottom]);
 
   // 폴링 폴백 — 실시간 구독이 실패해도 관리자 답변을 수초 내 수신
   useEffect(() => {
-    if (!open || !conversationId) return;
-    const supabase = supabaseRef.current;
-    const poll = async () => {
-      const { data } = await supabase
-        .from('cs_chat_messages')
-        .select('id, conversation_id, sender, body, created_at')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
-      if (!data) return;
-      setMessages((prev) => {
-        if (prev.length === (data as ChatMessage[]).length) return prev;
-        scrollToBottom();
-        return data as ChatMessage[];
-      });
-    };
-    const t = setInterval(poll, 4000);
+    if (!open || !user || !conversationId) return;
+    const t = setInterval(() => {
+      loadChat();
+    }, 3000);
     return () => clearInterval(t);
-  }, [open, conversationId, scrollToBottom]);
+  }, [open, user, conversationId, loadChat]);
 
   const handleSend = async () => {
     const body = input.trim();
-    if (!body || !conversationId || !user || sending) return;
+    if (!body || !user || sending) return;
     setSending(true);
+    setErrorMessage('');
     setInput('');
-    const { error } = await supabaseRef.current.from('cs_chat_messages').insert({
-      conversation_id: conversationId,
-      sender: 'user',
-      sender_id: user.id,
-      body,
-    });
-    if (error) setInput(body); // 실패 시 복구
-    setSending(false);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '메시지를 보내지 못했습니다');
+
+      const message = data.message as ChatMessage;
+      setConversationId(data.conversation_id ?? message.conversation_id);
+      setMessages((prev) => (prev.some((x) => x.id === message.id) ? prev : [...prev, message]));
+      scrollToBottom();
+    } catch (err) {
+      setInput(body);
+      setErrorMessage(err instanceof Error ? err.message : '메시지를 보내지 못했습니다');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -204,27 +206,37 @@ export default function SupportChatWidget() {
             <>
               <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2 bg-surface">
                 {messages.length === 0 ? (
-                  <p className="text-center text-xs text-muted py-6">
-                    무엇을 도와드릴까요? 메시지를 남겨주시면 순차적으로 답변드립니다.
-                  </p>
+                  <div className="py-6 text-center">
+                    <p className="text-xs text-muted">
+                      무엇을 도와드릴까요? 메시지를 남겨주시면 순차적으로 답변드립니다.
+                    </p>
+                    {errorMessage && (
+                      <p className="mt-2 text-xs text-error">{errorMessage}</p>
+                    )}
+                  </div>
                 ) : (
-                  messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={m.sender === 'user' ? 'flex justify-end' : 'flex justify-start'}
-                    >
+                  <>
+                    {messages.map((m) => (
                       <div
-                        className={
-                          'max-w-[78%] px-3 py-2 rounded-[var(--radius-md)] text-sm whitespace-pre-wrap break-words ' +
-                          (m.sender === 'user'
-                            ? 'bg-primary text-white rounded-br-sm'
-                            : 'bg-surface-strong text-ink rounded-bl-sm')
-                        }
+                        key={m.id}
+                        className={m.sender === 'user' ? 'flex justify-end' : 'flex justify-start'}
                       >
-                        {m.body}
+                        <div
+                          className={
+                            'max-w-[78%] px-3 py-2 rounded-[var(--radius-md)] text-sm whitespace-pre-wrap break-words ' +
+                            (m.sender === 'user'
+                              ? 'bg-primary text-white rounded-br-sm'
+                              : 'bg-surface-strong text-ink rounded-bl-sm')
+                          }
+                        >
+                          {m.body}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                    {errorMessage && (
+                      <p className="text-center text-xs text-error">{errorMessage}</p>
+                    )}
+                  </>
                 )}
               </div>
 
